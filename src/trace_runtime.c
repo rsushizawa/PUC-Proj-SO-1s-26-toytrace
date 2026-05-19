@@ -1,4 +1,4 @@
-#include "../include/trace_runtime.h"
+#include "trace_runtime.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -18,7 +18,7 @@ static void fill_event_from_regs(pid_t pid, int entering,
                                  const struct user_regs_struct *regs,
                                  struct syscall_event *ev) {
   /*
-   * TODO Semana 4:
+   * TODO: Semana 4:
    *
    * Preencha struct syscall_event usando os registradores x86_64.
    *
@@ -29,13 +29,19 @@ static void fill_event_from_regs(pid_t pid, int entering,
    * - ev->entering deve copiar o parametro entering.
    */
   memset(ev, 0, sizeof(*ev));
+  ev->syscall_no = regs->orig_rax;
+  ev->ret = regs->rax;
   ev->pid = pid;
   ev->entering = entering;
+  ev->args[0] = regs->rdi;
+  ev->args[1] = regs->rsi;
+  ev->args[2] = regs->rdx;
+  ev->args[3] = regs->r10;
+  ev->args[4] = regs->r8;
+  ev->args[5] = regs->r9;
 }
-
 static pid_t launch_tracee(char *const argv[]) {
-  /*
-   * TODO Semana 2:
+  /* TODO Semana 2:
    *
    * Crie o processo monitorado.
    *
@@ -51,17 +57,21 @@ static pid_t launch_tracee(char *const argv[]) {
    * Em erro, imprima uma mensagem com perror() e retorne -1.
    */
   pid_t pid = fork();
+  if (pid < 0) {
+    perror("Erro no fork");
+    exit(1);
+  }
   if (pid == 0) {
-    ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+    if (ptrace(PTRACE_TRACEME, 0, NULL, NULL)) {
+      perror("Erro no launch_tracee");
+      exit(1);
+    }
     raise(SIGSTOP);
     execvp(argv[0], argv);
+    perror("Erro no execvp");
+    exit(1);
   }
-  if (pid > 0) {
-    return pid;
-  }
-
-  fprintf(stderr, "erro: TODO Semana 2: implementar launch_tracee()\n");
-  return -1;
+  return pid;
 }
 
 static int wait_for_initial_stop(pid_t child) {
@@ -75,10 +85,9 @@ static int wait_for_initial_stop(pid_t child) {
    */
   int status;
   waitpid(child, &status, 0);
-  if (WIFEXITED(status)) {
+  if (WIFSTOPPED(status)) {
     return 0;
   }
-  printf(stderr, "erro: TODO Semana 2: implementar wait_for_initial_stop()\n");
   return -1;
 }
 
@@ -90,7 +99,7 @@ static int configure_trace_options(pid_t child) {
    * Isso ajuda a diferenciar paradas de syscall de outros sinais.
    */
 
-  if(ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACESYSGOOD) == 0){
+  if (ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACESYSGOOD) == 0) {
     return 0;
   }
 
@@ -109,7 +118,7 @@ static int resume_until_next_syscall(pid_t child, int signal_to_deliver) {
    * signal_to_deliver deve ser repassado como quarto argumento do ptrace.
    */
 
-  if(ptrace(PTRACE_SYSCALL, child, NULL, signal_to_deliver) == 0){
+  if (ptrace(PTRACE_SYSCALL, child, NULL, signal_to_deliver) == 0) {
     return 0;
   }
 
@@ -136,18 +145,18 @@ static int wait_for_syscall_stop(pid_t child, int *status) {
    * - paradas SIGTRAP comuns nao devem ser entregues de volta ao filho.
    */
 
-  if(waitpid(child, status, WUNTRACED) == -1){
+  if (waitpid(child, status, WUNTRACED) == -1) {
     return -1;
   }
 
-  if(WIFEXITED(*status) || WIFSIGNALED(*status)){
+  if (WIFEXITED(*status) || WIFSIGNALED(*status)) {
     return 0;
   }
 
-  if(WIFSTOPPED(*status)){
-    if(WSTOPSIG(*status) & 0x80){
+  if (WIFSTOPPED(*status)) {
+    if (WSTOPSIG(*status) & 0x80) {
       return 1;
-    }else{
+    } else {
       return 0;
     }
   }
@@ -204,12 +213,13 @@ int trace_program(char *const argv[], trace_observer_fn observer,
     }
 
     /*
-     * TODO Semana 4:
+     * TODO: Semana 4:
      *
      * Use PTRACE_GETREGS para preencher regs.
      * Depois chame fill_event_from_regs() e observer().
      */
     memset(&regs, 0, sizeof(regs));
+    ptrace(PTRACE_GETREGS, child, NULL, &regs);
     fill_event_from_regs(child, entering, &regs, &ev);
     if (observer != NULL) {
       observer(&ev, userdata);
