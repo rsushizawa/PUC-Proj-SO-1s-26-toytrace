@@ -1,4 +1,4 @@
-#include "../../include/student_api.h"
+#include "student_api.h"
 
 int student_pair_syscall(struct syscall_pairer *pairer,
                          const struct syscall_event *ev,
@@ -29,13 +29,18 @@ int student_pair_syscall(struct syscall_pairer *pairer,
    */
 
   if (ev->entering == pairer->has_entry) {
+    // Evento de entrada quando já tem entrada
     return -1;
   } else if (ev->entering == 0) {
+    // Evento de saida quando já tem entrada
+    // Par completo
     *out = pairer->entry;
+    out->entering = 0;
     out->ret = ev->ret;
     pairer->has_entry = 0;
     return 1;
   }
+  // Evento de entrada quando não tem entrada
   pairer->has_entry = 1;
   pairer->entry = *ev;
   return 0;
