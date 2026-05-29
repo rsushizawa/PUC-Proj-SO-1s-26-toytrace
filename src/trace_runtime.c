@@ -145,24 +145,23 @@ static int wait_for_syscall_stop(pid_t child, int *status) {
    * - paradas SIGTRAP comuns nao devem ser entregues de volta ao filho.
    */
 
-  if (waitpid(child, status, WUNTRACED) == -1) {
-    return -1;
-  }
+  while (1) {
+    if (waitpid(child, status, WUNTRACED) == -1) {
+      return -1;
+    }
 
-  if (WIFEXITED(*status) || WIFSIGNALED(*status)) {
-    return 0;
-  }
-
-  if (WIFSTOPPED(*status)) {
-    if (WSTOPSIG(*status) & 0x80) {
-      return 1;
-    } else {
+    if (WIFEXITED(*status) || WIFSIGNALED(*status)) {
       return 0;
     }
-  }
 
-  fprintf(stderr, "erro: TODO Semana 3: implementar wait_for_syscall_stop()\n");
-  return -1;
+    if (WIFSTOPPED(*status)) {
+      if (WSTOPSIG(*status) & 0x80) {
+        return 1;
+      } else {
+        resume_until_next_syscall(child, 0);
+      }
+    }
+  } 
 }
 
 int trace_program(char *const argv[], trace_observer_fn observer,
